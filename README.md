@@ -8,19 +8,19 @@
 
 ---
 
-## 👨‍💻 Sobre mim
+##  Sobre mim
 
-💻 Desenvolvedor em formação, apaixonado por tecnologia e desenvolvimento de software.
+ Desenvolvedor em formação, apaixonado por tecnologia e desenvolvimento de software.
 
-🚀 Buscando evoluir constantemente através de projetos práticos e novos desafios.
+ Buscando evoluir constantemente através de projetos práticos e novos desafios.
 
-📚 Atualmente aprimorando meus conhecimentos em programação, estruturas de dados, desenvolvimento web e construção de sistemas.
+ Atualmente aprimorando meus conhecimentos em programação, estruturas de dados, desenvolvimento web e construção de sistemas.
 
-🎯 Meu objetivo é desenvolver soluções eficientes, bem estruturadas e que resolvam problemas reais.
+ Meu objetivo é desenvolver soluções eficientes, bem estruturadas e que resolvam problemas reais.
 
 ---
 
-## 🛠️ Tecnologias
+##  Tecnologias
 
 <p align="left">
 
@@ -40,7 +40,7 @@
 
 ---
 
-## 📊 Estatísticas
+##  Estatísticas
 
 <p align="center">
 
@@ -52,7 +52,7 @@
 
 ---
 
-## 🐍 Contribuições
+##  Contribuições
 
 <p align="center">
   <picture>
@@ -64,7 +64,7 @@
 
 ---
 
-## 📫 Contato
+##  Contato
 
 <p align="left">
 
@@ -79,5 +79,5 @@
 ---
 
 <p align="center">
-  🚀 <strong>Transformando conhecimento em código, um projeto de cada vez.</strong>
+   <strong>Transformando conhecimento em código, um projeto de cada vez.</strong>
 </p>
