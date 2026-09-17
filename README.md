@@ -44,7 +44,7 @@
 
 <p align="center">
 
-<img height="180em" src="srcset="https://raw.githubusercontent.com/davicoutinhoms/davicoutinhoms/output/github-contribution-grid-snake-dark.svg?v=2"/>
+<img height="180em" src="https://github-readme-stats.vercel.app/api?username=davicoutinhoms&show_icons=true&theme=tokyonight&include_all_commits=true&count_private=true"/>
 
 <img height="180em" src="https://github-readme-stats.vercel.app/api/top-langs/?username=davicoutinhoms&layout=compact&theme=tokyonight"/>
 
