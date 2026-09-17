@@ -1,12 +1,10 @@
-name: Generate Growing Snake
+name: Generate Snake
 
 on:
   schedule:
     - cron: "0 0 * * *"
+
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: write
@@ -14,48 +12,19 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - name: Gerar cobrinha clara
-        uses: dahan8473/snake-and-commits@v1
+      - name: Generate snake.svg
+        uses: Platane/snk/svg-only@v3
         with:
-          github_user: ${{ github.repository_owner }}
-          output: dist/github-contribution-grid-snake.svg
-          theme: green
-          frame: "false"
-          counter: "false"
+          github_user_name: ${{ github.repository_owner }}
+          outputs: |
+            dist/github-contribution-grid-snake.svg
+            dist/github-contribution-grid-snake-dark.svg?palette=github-dark
 
-      - name: Gerar cobrinha escura
-        uses: dahan8473/snake-and-commits@v1
-        with:
-          github_user: ${{ github.repository_owner }}
-          output: dist/github-contribution-grid-snake-dark.svg
-          theme: blue
-          frame: "false"
-          counter: "false"
-
-      # O gerador trabalha a 10 passos/s por padrão.
-      # Aqui reduzimos todas as durações para 72%,
-      # deixando a animação ~39% mais rápida sem ficar acelerada demais.
-      - name: Ajustar velocidade
-        shell: python
-        run: |
-          from pathlib import Path
-          import re
-
-          for file in Path("dist").glob("*.svg"):
-              text = file.read_text(encoding="utf-8")
-
-              def faster(match):
-                  seconds = float(match.group(1))
-                  return f"{seconds * 0.72:.2f}s"
-
-              text = re.sub(r"(\d+(?:\.\d+)?)s", faster, text)
-              file.write_text(text, encoding="utf-8")
-              print(f"Velocidade ajustada: {file}")
-
-      - name: Publicar na branch output
-        uses: crazy-max/ghaction-github-pages@v4
+      - name: Push snake to output branch
+        uses: crazy-max/ghaction-github-pages@v3.1.0
         with:
           target_branch: output
           build_dir: dist
