@@ -1,8 +1,9 @@
 import json
 import os
+import random
 import sys
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 
 GRID_ROWS = 7
@@ -11,7 +12,11 @@ GRID_ROWS = 7
 CELL = 10
 GAP = 3
 PITCH = CELL + GAP
-DURATION_SECONDS = 28
+
+# Velocidade: tempo aproximado de cada movimento da cobrinha.
+# Quanto MAIOR, mais devagar.
+STEP_SECONDS = 0.10
+MIN_DURATION_SECONDS = 18
 
 # Crescimento
 START_LENGTH = 3
@@ -85,8 +90,11 @@ def fetch_calendar(username: str, token: str):
         raise RuntimeError(data["errors"])
 
     user = data.get("data", {}).get("user")
+
     if not user:
-        raise RuntimeError(f"Usuário '{username}' não encontrado no GitHub.")
+        raise RuntimeError(
+            f"Usuário '{username}' não encontrado no GitHub."
+        )
 
     return user["contributionsCollection"]["contributionCalendar"]["weeks"]
 
@@ -119,106 +127,103 @@ def build_grid(weeks):
     return grid
 
 
-def create_path(grid):
-    import random
+def manhattan(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
+
+def random_shortest_route(start, target):
+    """
+    Cria um caminho contínuo entre dois pontos.
+    Ele continua sendo um caminho curto, mas alterna aleatoriamente
+    movimentos horizontais e verticais para evitar o aspecto de zigue-zague.
+    """
+    x, y = start
+    tx, ty = target
+    route = []
+
+    while (x, y) != (tx, ty):
+        options = []
+
+        if x < tx:
+            options.append((x + 1, y))
+        elif x > tx:
+            options.append((x - 1, y))
+
+        if y < ty:
+            options.append((x, y + 1))
+        elif y > ty:
+            options.append((x, y - 1))
+
+        x, y = random.choice(options)
+        route.append((x, y))
+
+    return route
+
+
+def create_path(grid):
     cols = len(grid)
 
-    # Seed fixa para a cobrinha não mudar completamente
-    # toda vez que o workflow rodar
-    random.seed(42)
+    # A rota muda uma vez por dia.
+    # Rodar o workflow novamente no mesmo dia mantém a mesma animação.
+    seed = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    random.seed(seed)
+
+    active = {
+        (x, y)
+        for x in range(cols)
+        for y in range(GRID_ROWS)
+        if grid[x][y]["count"] > 0
+    }
 
     path = []
 
-    # Entrada pela esquerda
-    current = (-START_LENGTH, 0)
-
+    # Entrada pela esquerda.
     for x in range(-START_LENGTH, 0):
         path.append((x, 0))
 
     current = (0, 0)
+    path.append(current)
+    active.discard(current)
 
-    if path[-1] != current:
-        path.append(current)
+    while active:
+        # Evita saltos gigantes, mas não escolhe sempre o quadrado mais próximo.
+        ordered = sorted(
+            active,
+            key=lambda target: manhattan(current, target)
+        )
 
-    # Pega todos os quadrados que possuem contribuição
-    targets = []
+        candidate_count = min(8, len(ordered))
+        candidates = ordered[:candidate_count]
 
-    for x in range(cols):
-        for y in range(GRID_ROWS):
-            if grid[x][y]["count"] > 0:
-                targets.append((x, y))
+        # Dá preferência aos mais próximos sem tornar a rota previsível.
+        weights = list(range(candidate_count, 0, -1))
+        target = random.choices(
+            candidates,
+            weights=weights,
+            k=1,
+        )[0]
 
-    while targets:
-        cx, cy = current
+        route = random_shortest_route(current, target)
 
-        # Calcula distância até os quadrados restantes
-        distances = []
-
-        for target in targets:
-            tx, ty = target
-            distance = abs(tx - cx) + abs(ty - cy)
-            distances.append((distance, target))
-
-        distances.sort(key=lambda item: item[0])
-
-        # Em vez de sempre pegar o mais próximo,
-        # escolhe aleatoriamente entre alguns próximos
-        candidates = distances[:min(6, len(distances))]
-
-        _, target = random.choice(candidates)
-
-        tx, ty = target
-
-        # Decide aleatoriamente se anda primeiro
-        # horizontalmente ou verticalmente
-        horizontal_first = random.choice([True, False])
-
-        if horizontal_first:
-
-            while cx != tx:
-                cx += 1 if tx > cx else -1
-                path.append((cx, cy))
-
-            while cy != ty:
-                cy += 1 if ty > cy else -1
-                path.append((cx, cy))
-
-        else:
-
-            while cy != ty:
-                cy += 1 if ty > cy else -1
-                path.append((cx, cy))
-
-            while cx != tx:
-                cx += 1 if tx > cx else -1
-                path.append((cx, cy))
+        for step in route:
+            path.append(step)
+            active.discard(step)
 
         current = target
 
-        if target in targets:
-            targets.remove(target)
+    # Faz a cobrinha sair do gráfico para a cauda terminar a animação.
+    x, y = current
 
-    # Depois de comer tudo, sai da grade
-    cx, cy = current
+    if x < cols / 2:
+        direction = -1
+        steps_to_exit = x + ABSOLUTE_MAX_LENGTH + 3
+    else:
+        direction = 1
+        steps_to_exit = (cols - 1 - x) + ABSOLUTE_MAX_LENGTH + 3
 
-    direction = random.choice([-1, 1])
-
-    for _ in range(ABSOLUTE_MAX_LENGTH + 4):
-
-        cx += direction
-
-        if cx < 0:
-            cx = 0
-            cy = min(GRID_ROWS - 1, cy + 1)
-            direction = 1
-
-        elif cx >= cols:
-            cx = cols - 1
-            cy = min(GRID_ROWS - 1, cy + 1)
-            direction = -1
-
-        path.append((cx, cy))
+    for _ in range(steps_to_exit):
+        x += direction
+        path.append((x, y))
 
     return path
 
@@ -249,8 +254,6 @@ def generate_svg(grid, theme):
     cols = len(grid)
     palette = PALETTES[theme]
 
-    # Conta QUANTOS QUADRADOS têm contribuição.
-    # Não soma a quantidade de commits dentro deles.
     active_cells = sum(
         1
         for col in grid
@@ -258,37 +261,38 @@ def generate_svg(grid, theme):
         if cell["count"] > 0
     )
 
-    # Regra principal:
-    # - nunca maior que 30
-    # - nunca maior que a quantidade de quadrados com contribuição
+    # Nunca passa de 30 e nunca fica maior que a quantidade
+    # de quadrados que possuem contribuição.
     max_length = max(
         1,
-        min(ABSOLUTE_MAX_LENGTH, active_cells)
+        min(ABSOLUTE_MAX_LENGTH, active_cells),
     )
 
-    initial_length = min(START_LENGTH, max_length)
+    initial_length = min(
+        START_LENGTH,
+        max_length,
+    )
 
     path = create_path(grid)
+    frame_count = len(path)
 
-    grid_start = START_LENGTH
-    grid_end = grid_start + cols * GRID_ROWS
-
-    frame_count = min(
-        len(path),
-        grid_end + max_length + 2
+    # Velocidade constante por movimento.
+    duration_seconds = max(
+        MIN_DURATION_SECONDS,
+        frame_count * STEP_SECONDS,
     )
-
-    path = path[:frame_count]
 
     cell_path_index = {}
 
-    for index, position in enumerate(path):
-        x, y = position
-
-        if (x, y) not in cell_path_index:
+    for index, (x, y) in enumerate(path):
+        if (
+            0 <= x < cols
+            and 0 <= y < GRID_ROWS
+            and (x, y) not in cell_path_index
+        ):
             cell_path_index[(x, y)] = index
 
-    eaten = 0
+    eaten_positions = set()
     length_by_frame = []
 
     for x, y in path:
@@ -297,15 +301,18 @@ def generate_svg(grid, theme):
             and 0 <= y < GRID_ROWS
             and grid[x][y]["count"] > 0
         ):
-            eaten += 1
+            eaten_positions.add((x, y))
 
-        # Cresce 1 segmento a cada GROW_EVERY quadrados com contribuição.
+        eaten = len(eaten_positions)
+
         current_length = min(
             max_length,
             initial_length + eaten // GROW_EVERY,
         )
 
-        length_by_frame.append(max(1, current_length))
+        length_by_frame.append(
+            max(1, current_length)
+        )
 
     width = cols * PITCH - GAP
     height = GRID_ROWS * PITCH - GAP
@@ -338,11 +345,16 @@ def generate_svg(grid, theme):
             px = x * PITCH
             py = y * PITCH
 
-            color = contribution_color(cell, theme)
+            color = contribution_color(
+                cell,
+                theme,
+            )
 
             date_text = cell["date"] or "sem data"
+
             title = escape(
-                f'{date_text}: {cell["count"]} contribuições'
+                f'{date_text}: '
+                f'{cell["count"]} contribuições'
             )
 
             svg.append(
@@ -351,10 +363,10 @@ def generate_svg(grid, theme):
                 f'rx="2" fill="{color}">'
             )
 
-            svg.append(f"<title>{title}</title>")
+            svg.append(
+                f"<title>{title}</title>"
+            )
 
-            # Quando a cabeça chega ao quadrado,
-            # ele desaparece.
             if cell["count"] > 0:
                 eat_index = cell_path_index[(x, y)]
 
@@ -365,7 +377,10 @@ def generate_svg(grid, theme):
 
                 epsilon = min(
                     0.0015,
-                    1 / max(1000, frame_count * 10),
+                    1 / max(
+                        1000,
+                        frame_count * 10,
+                    ),
                 )
 
                 after_eat = min(
@@ -376,11 +391,12 @@ def generate_svg(grid, theme):
                 svg.append(
                     f'<animate '
                     f'attributeName="opacity" '
-                    f'dur="{DURATION_SECONDS}s" '
+                    f'dur="{duration_seconds:.2f}s" '
                     f'repeatCount="indefinite" '
                     f'calcMode="discrete" '
                     f'values="1;1;0;0" '
-                    f'keyTimes="0;{eat_time:.6f};'
+                    f'keyTimes="0;'
+                    f'{eat_time:.6f};'
                     f'{after_eat:.6f};1"/>'
                 )
 
@@ -407,11 +423,21 @@ def generate_svg(grid, theme):
             if visible:
                 x, y = path[frame - segment]
 
-                x_values.append(str(x * PITCH))
-                y_values.append(str(y * PITCH))
+                x_values.append(
+                    str(x * PITCH)
+                )
+
+                y_values.append(
+                    str(y * PITCH)
+                )
+
                 opacity_values.append("1")
+
             else:
-                x_values.append(str(-PITCH * 4))
+                x_values.append(
+                    str(-PITCH * 4)
+                )
+
                 y_values.append("0")
                 opacity_values.append("0")
 
@@ -421,7 +447,11 @@ def generate_svg(grid, theme):
             else palette["snake"]
         )
 
-        radius = 3 if segment == 0 else 2
+        radius = (
+            3
+            if segment == 0
+            else 2
+        )
 
         svg.append(
             f'<rect x="{-PITCH * 4}" y="0" '
@@ -431,7 +461,7 @@ def generate_svg(grid, theme):
 
         svg.append(
             f'<animate attributeName="x" '
-            f'dur="{DURATION_SECONDS}s" '
+            f'dur="{duration_seconds:.2f}s" '
             f'repeatCount="indefinite" '
             f'values="{";".join(x_values)}" '
             f'keyTimes="{key_times}"/>'
@@ -439,7 +469,7 @@ def generate_svg(grid, theme):
 
         svg.append(
             f'<animate attributeName="y" '
-            f'dur="{DURATION_SECONDS}s" '
+            f'dur="{duration_seconds:.2f}s" '
             f'repeatCount="indefinite" '
             f'values="{";".join(y_values)}" '
             f'keyTimes="{key_times}"/>'
@@ -447,7 +477,7 @@ def generate_svg(grid, theme):
 
         svg.append(
             f'<animate attributeName="opacity" '
-            f'dur="{DURATION_SECONDS}s" '
+            f'dur="{duration_seconds:.2f}s" '
             f'repeatCount="indefinite" '
             f'calcMode="discrete" '
             f'values="{";".join(opacity_values)}" '
@@ -462,7 +492,9 @@ def generate_svg(grid, theme):
         f'<!-- '
         f'active_cells={active_cells}; '
         f'max_snake_length={max_length}; '
-        f'grow_every={GROW_EVERY} '
+        f'grow_every={GROW_EVERY}; '
+        f'frames={frame_count}; '
+        f'duration={duration_seconds:.2f}s '
         f'-->'
     )
 
@@ -474,7 +506,11 @@ def generate_svg(grid, theme):
 def main():
     username = (
         os.environ.get("GITHUB_USER")
-        or (sys.argv[1] if len(sys.argv) > 1 else "")
+        or (
+            sys.argv[1]
+            if len(sys.argv) > 1
+            else ""
+        )
     )
 
     token = (
@@ -493,27 +529,46 @@ def main():
             "Defina GH_TOKEN ou GITHUB_TOKEN."
         )
 
-    weeks = fetch_calendar(username, token)
+    weeks = fetch_calendar(
+        username,
+        token,
+    )
+
     grid = build_grid(weeks)
 
-    os.makedirs("dist", exist_ok=True)
+    os.makedirs(
+        "dist",
+        exist_ok=True,
+    )
 
     files = {
-        "light": "github-contribution-grid-snake.svg",
-        "dark": "github-contribution-grid-snake-dark.svg",
+        "light":
+            "github-contribution-grid-snake.svg",
+        "dark":
+            "github-contribution-grid-snake-dark.svg",
     }
 
     for theme, filename in files.items():
-        output_path = os.path.join("dist", filename)
+        output_path = os.path.join(
+            "dist",
+            filename,
+        )
 
         with open(
             output_path,
             "w",
             encoding="utf-8",
         ) as file:
-            file.write(generate_svg(grid, theme))
+            file.write(
+                generate_svg(
+                    grid,
+                    theme,
+                )
+            )
 
-        print(f"Gerado: {output_path}")
+        print(
+            f"Gerado: {output_path}"
+        )
 
 
 if __name__ == "__main__":
