@@ -11,7 +11,7 @@ GRID_ROWS = 7
 CELL = 10
 GAP = 3
 PITCH = CELL + GAP
-DURATION_SECONDS = 14
+DURATION_SECONDS = 28
 
 # Crescimento
 START_LENGTH = 3
@@ -119,29 +119,106 @@ def build_grid(weeks):
     return grid
 
 
-def create_path(cols):
+def create_path(grid):
+    import random
+
+    cols = len(grid)
+
+    # Seed fixa para a cobrinha não mudar completamente
+    # toda vez que o workflow rodar
+    random.seed(42)
+
     path = []
 
-    # A cobrinha entra pela esquerda.
+    # Entrada pela esquerda
+    current = (-START_LENGTH, 0)
+
     for x in range(-START_LENGTH, 0):
         path.append((x, 0))
 
-    # Caminho em zigue-zague pela grade.
-    for y in range(GRID_ROWS):
-        if y % 2 == 0:
-            xs = range(cols)
+    current = (0, 0)
+
+    if path[-1] != current:
+        path.append(current)
+
+    # Pega todos os quadrados que possuem contribuição
+    targets = []
+
+    for x in range(cols):
+        for y in range(GRID_ROWS):
+            if grid[x][y]["count"] > 0:
+                targets.append((x, y))
+
+    while targets:
+        cx, cy = current
+
+        # Calcula distância até os quadrados restantes
+        distances = []
+
+        for target in targets:
+            tx, ty = target
+            distance = abs(tx - cx) + abs(ty - cy)
+            distances.append((distance, target))
+
+        distances.sort(key=lambda item: item[0])
+
+        # Em vez de sempre pegar o mais próximo,
+        # escolhe aleatoriamente entre alguns próximos
+        candidates = distances[:min(6, len(distances))]
+
+        _, target = random.choice(candidates)
+
+        tx, ty = target
+
+        # Decide aleatoriamente se anda primeiro
+        # horizontalmente ou verticalmente
+        horizontal_first = random.choice([True, False])
+
+        if horizontal_first:
+
+            while cx != tx:
+                cx += 1 if tx > cx else -1
+                path.append((cx, cy))
+
+            while cy != ty:
+                cy += 1 if ty > cy else -1
+                path.append((cx, cy))
+
         else:
-            xs = range(cols - 1, -1, -1)
 
-        for x in xs:
-            path.append((x, y))
+            while cy != ty:
+                cy += 1 if ty > cy else -1
+                path.append((cx, cy))
 
-    # Depois sai da grade, permitindo que a cauda termine a animação.
-    last_x, last_y = path[-1]
-    direction = 1 if last_x == cols - 1 else -1
+            while cx != tx:
+                cx += 1 if tx > cx else -1
+                path.append((cx, cy))
 
-    for i in range(1, ABSOLUTE_MAX_LENGTH + 3):
-        path.append((last_x + direction * i, last_y))
+        current = target
+
+        if target in targets:
+            targets.remove(target)
+
+    # Depois de comer tudo, sai da grade
+    cx, cy = current
+
+    direction = random.choice([-1, 1])
+
+    for _ in range(ABSOLUTE_MAX_LENGTH + 4):
+
+        cx += direction
+
+        if cx < 0:
+            cx = 0
+            cy = min(GRID_ROWS - 1, cy + 1)
+            direction = 1
+
+        elif cx >= cols:
+            cx = cols - 1
+            cy = min(GRID_ROWS - 1, cy + 1)
+            direction = -1
+
+        path.append((cx, cy))
 
     return path
 
@@ -191,7 +268,7 @@ def generate_svg(grid, theme):
 
     initial_length = min(START_LENGTH, max_length)
 
-    path = create_path(cols)
+    path = create_path(grid)
 
     grid_start = START_LENGTH
     grid_end = grid_start + cols * GRID_ROWS
@@ -208,7 +285,7 @@ def generate_svg(grid, theme):
     for index, position in enumerate(path):
         x, y = position
 
-        if 0 <= x < cols and 0 <= y < GRID_ROWS:
+        if (x, y) not in cell_path_index:
             cell_path_index[(x, y)] = index
 
     eaten = 0
