@@ -1,0 +1,44 @@
+name: Generate Growing Snake
+
+on:
+  schedule:
+    # Atualiza diariamente às 00:00 UTC
+    - cron: "0 0 * * *"
+
+  # Permite rodar manualmente na aba Actions
+  workflow_dispatch:
+
+  # Atualiza também quando houver push na main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Gerar cobrinha com crescimento
+        env:
+          GITHUB_USER: ${{ github.repository_owner }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/generate_snake.py
+
+      - name: Publicar arquivos na branch output
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: output
+          publish_dir: ./dist
+          force_orphan: true
