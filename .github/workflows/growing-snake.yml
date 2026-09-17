@@ -2,13 +2,8 @@ name: Generate Growing Snake
 
 on:
   schedule:
-    # Atualiza diariamente às 00:00 UTC
     - cron: "0 0 * * *"
-
-  # Permite rodar manualmente na aba Actions
   workflow_dispatch:
-
-  # Atualiza também quando houver push na main
   push:
     branches:
       - main
@@ -21,24 +16,48 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar repositório
-        uses: actions/checkout@v4
-
-      - name: Configurar Python
-        uses: actions/setup-python@v5
+      - name: Gerar cobrinha clara
+        uses: dahan8473/snake-and-commits@v1
         with:
-          python-version: "3.12"
+          github_user: ${{ github.repository_owner }}
+          output: dist/github-contribution-grid-snake.svg
+          theme: green
+          frame: "false"
+          counter: "false"
 
-      - name: Gerar cobrinha com crescimento
+      - name: Gerar cobrinha escura
+        uses: dahan8473/snake-and-commits@v1
+        with:
+          github_user: ${{ github.repository_owner }}
+          output: dist/github-contribution-grid-snake-dark.svg
+          theme: blue
+          frame: "false"
+          counter: "false"
+
+      # O gerador trabalha a 10 passos/s por padrão.
+      # Aqui reduzimos todas as durações para 72%,
+      # deixando a animação ~39% mais rápida sem ficar acelerada demais.
+      - name: Ajustar velocidade
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          for file in Path("dist").glob("*.svg"):
+              text = file.read_text(encoding="utf-8")
+
+              def faster(match):
+                  seconds = float(match.group(1))
+                  return f"{seconds * 0.72:.2f}s"
+
+              text = re.sub(r"(\d+(?:\.\d+)?)s", faster, text)
+              file.write_text(text, encoding="utf-8")
+              print(f"Velocidade ajustada: {file}")
+
+      - name: Publicar na branch output
+        uses: crazy-max/ghaction-github-pages@v4
+        with:
+          target_branch: output
+          build_dir: dist
         env:
-          GITHUB_USER: ${{ github.repository_owner }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/generate_snake.py
-
-      - name: Publicar arquivos na branch output
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: output
-          publish_dir: ./dist
-          force_orphan: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
